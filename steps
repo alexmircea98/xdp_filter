@@ -1,0 +1,17 @@
+sudo apt-get update
+sudo apt-get upgrade
+sudo apt-get install --only-upgrade iproute2
+sudo apt-get install clang llvm hping3 ethtool
+sudo apt-get install -y make gcc libssl-dev bc libelf-dev libcap-dev clang gcc-multilib llvm libncurses5-dev git pkg-config libmnl-dev bison flex graphviz
+
+
+sudo clang -target bpf -c xdp.c -o xdp.o -O2
+
+ip link set dev ens33 xdpdrv obj xdp.o sec .text
+ip link set dev ens33 xdpdrv off
+
+gen pings: fping / iperf
+
+ print get printk: sudo cat /sys/kernel/debug/tracing/trace_pipe
+
+
