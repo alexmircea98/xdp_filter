@@ -12,6 +12,35 @@ ip link set dev ens33 xdpdrv off
 
 gen pings: fping / iperf
 
- print get printk: sudo cat /sys/kernel/debug/tracing/trace_pipe
+print get printk: sudo cat /sys/kernel/debug/tracing/trace_pipe
 
 
+load:
+sudo ./bin/loader -i ens33 -o obj/xdp_filter_kern.o -s prog  
+unload:
+sudo ./bin/loader -i ens33 -u
+
+//
+//returneaza o lista cu interfetele disponibile (si date despre ele)
+GET http://127.0.0.1:12914/restconf/data/<OS:>/interface/
+
+//returneaza informatii despre interfata ceruta si acl-ul de pe ea daca este cazul
+GET /restconf/data/<OS:>/interface/<interface-name>  (ens33)
+
+POST /restconf/data/<OS:>/interface/<interface-name>/load/
+
+POST /restconf/data/<OS:>/interface/<interface-name>/unload/<acl-name>
+
+	
+PUT/PATCH /restconf/data/<OS:>/interface/<interface-name>?ip=""&port=""
+{
+    "ip" : "1.2.3.4"
+    "port" : "1234"
+}
+
+/firewall/middlebox/<version>
+
+1 - verifica numarul de interfete si aloca stucturile necesare pentru fiecare 
+
+https://github.com/pabeni/xdp_walkthrough_examples
+https://www.browserling.com/tools/dec-to-ip

@@ -1,5 +1,28 @@
 {
     "files.associations": {
-        "if.h": "c"
+        "if.h": "c",
+        "bpf_helpers.h": "c",
+        "if_ether.h": "c",
+        "if_packet.h": "c",
+        "if_vlan.h": "c",
+        "utils.h": "c",
+        "errno.h": "c",
+        "netdb.h": "c",
+        "xdp_filter_common.h": "c",
+        "httpd.h": "c",
+        "ifaddrs.h": "c",
+        "types.h": "c",
+        "libbpf.h": "c",
+        "bpf.h": "c",
+        "resource.h": "c",
+        "socket.h": "c",
+        "helpers.h": "c",
+        "error.h": "c",
+        "ostream": "c",
+        "array": "c",
+        "functional": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c"
     }
 }
