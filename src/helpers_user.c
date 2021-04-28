@@ -388,7 +388,7 @@ int add_to_interface(char *interface, char *ipsrc, int port)
 	if (!ifindex)
 		error(1, errno, "unknown interface %s\n", interface);
 
-    
+    find_map_fd(&i_dat[ifindex], "black_list");
     printf("WTF INTERF %d and mapFD :%d\n", ifindex, i_dat[ifindex].map_fd);
     
     int chk = add_entry_to_map(i_dat[ifindex].map_fd, ipsrc, port);
@@ -402,6 +402,8 @@ int delete_from_interface(char *interface, char *ipsrc, int port)
 	if (!ifindex)
 		error(1, errno, "unknown interface %s\n", interface);
     printf("WTF INTERF %d\n", ifindex);
+
+    find_map_fd(&i_dat[ifindex], "black_list");
 
     int chk = add_entry_to_map(i_dat[ifindex].map_fd, ipsrc, port);
 	printf("Deleted from %d\n", i_dat[ifindex].map_fd);

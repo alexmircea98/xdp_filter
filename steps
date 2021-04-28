@@ -15,21 +15,18 @@ gen pings: fping / iperf
 print get printk: sudo cat /sys/kernel/debug/tracing/trace_pipe
 
 
-load:
-sudo ./bin/loader -i ens33 -o obj/xdp_filter_kern.o -s prog  
-unload:
-sudo ./bin/loader -i ens33 -u
+
 
 //
 //returneaza o lista cu interfetele disponibile (si date despre ele)
 GET http://127.0.0.1:12914/restconf/data/<OS:>/interface/
 
 //returneaza informatii despre interfata ceruta si acl-ul de pe ea daca este cazul
-GET /restconf/data/<OS:>/interface/<interface-name>  (ens33)
+GET /restconf/data/<OS:>/interface/<interface-name>  (OS:ubuntu) (interface-name:ens33)
 
 POST /restconf/data/<OS:>/interface/<interface-name>/load/
 
-POST /restconf/data/<OS:>/interface/<interface-name>/unload/<acl-name>
+POST /restconf/data/<OS:>/interface/<interface-name>/unload/
 
 	
 PUT/PATCH /restconf/data/<OS:>/interface/<interface-name>?ip=""&port=""
@@ -40,7 +37,17 @@ PUT/PATCH /restconf/data/<OS:>/interface/<interface-name>?ip=""&port=""
 
 /firewall/middlebox/<version>
 
-1 - verifica numarul de interfete si aloca stucturile necesare pentru fiecare 
+usage: 
+    load:
+    sudo ./bin/loader -i ens33 -o obj/xdp_filter_kern.o -s prog  
+    unload:
+    sudo ./bin/loader -i ens33 -u
+
+    CURL:
+    url -X POST http://localhost:12914/firewall/ubuntu/v1/interface/ens33/load
+    url -X POST http://localhost:12914/firewall/ubuntu/v1/interface/ens33/unload
+    url -X POST http://localhost:12914/firewall/ubuntu/v1/interface/ens33/a
+    url -X POST http://localhost:12914/firewall/ubuntu/v1/interface/ens33/d
 
 https://github.com/pabeni/xdp_walkthrough_examples
 https://www.browserling.com/tools/dec-to-ip
