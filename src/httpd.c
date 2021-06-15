@@ -67,11 +67,7 @@ void serve_forever(const char *PORT)
         }
         else
         {
-            if ( fork()==0 )
-            {
                 respond(slot);
-                exit(0);
-            }
         }
 
         while (clients[slot]!=-1) slot = (slot+1)%CONNMAX;
@@ -138,7 +134,6 @@ void respond(int n)
 
     buf = malloc(65535);
     rcvd=recv(clients[n], buf, 65535, 0);
-
     if (rcvd<0)    // receive error
         fprintf(stderr,("recv() error\n"));
     else if (rcvd==0)    // receive socket closed
@@ -152,7 +147,7 @@ void respond(int n)
         prot   = strtok(NULL, " \t\r\n"); 
 
         fprintf(stderr, "\x1b[32m + [%s] %s\x1b[0m\n", method, uri);
-        
+
         if (qs = strchr(uri, '?'))
         {
             *qs++ = '\0'; //split URI
@@ -173,7 +168,8 @@ void respond(int n)
             t = v + 1 + strlen(v);
             if (t[1] == '\r' && t[2] == '\n') break;
         }
-        t++; // now the *t shall be the beginning of user payload
+        t = strtok(NULL, "\r\n"); // now the *t shall be the beginning of user payload
+        fprintf(stderr, "payload:\n%s\n", t);
         t2 = request_header("Content-Length"); // and the related header if there is  
         payload = t;
         payload_size = t2 ? atol(t2) : (rcvd-(t-buf));
@@ -187,15 +183,14 @@ void respond(int n)
         route();
 
         // tidy up
-        fflush(stdout);
-        shutdown(STDOUT_FILENO, SHUT_WR);
-        close(STDOUT_FILENO);
+        fflush(stdout); //works for now FIX LATER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //shutdown(STDOUT_FILENO, SHUT_WR);
+        //close(STDOUT_FILENO);
     }
-
-    //Closing SOCKET
-    shutdown(clientfd, SHUT_RDWR);         //All further send and recieve operations are DISABLED...
-    close(clientfd);
-    clients[n]=-1;
+    // Closing SOCKET
+    // shutdown(clientfd, SHUT_RDWR);         //All further send and recieve operations are DISABLED...
+    // close(clientfd);
+    // clients[n]=-1;
 }
 
 

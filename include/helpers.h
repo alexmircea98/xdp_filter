@@ -4,12 +4,26 @@
 
 //interfaces
 #include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <sys/socket.h>
 #include <netdb.h>
 
+#include <linux/in.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
+#include <linux/tcp.h>
+#include <linux/ip.h>
+#include <linux/udp.h>
+
+
+
 #include <error.h>
 #include <errno.h>
+
+//json
+#include <json.h>
 
 //local
 #include "config.h"
@@ -20,6 +34,7 @@
 
 #define NI_NUMERICHOST	1	/* Don't try to look up hostname.  */
 #define NI_MAXHOST 1025
+extern struct i_data i_dat[32];
 
 int xdp_link_detach(int ifindex, uint32_t xdp_flags);
 int load_bpf_and_xdp_attach(struct i_data *i_dat, struct config *cfg);
@@ -33,8 +48,10 @@ uint32_t ip_to_uint(char *ip_str);
 int load_interface(char *interface);
 int unload_interface(char *interface);
 
-int add_to_interface(char *interface, char *ipsrc, int port);
-int delete_from_interface(char *interface, char *ipsrc, int port);
+int add_to_interface(char *interface, char *data);
+int delete_from_interface(char *interface);
+
+char *command_interpreter(char *interf, char *payload);
 
 #endif
 

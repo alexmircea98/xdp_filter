@@ -13,14 +13,16 @@
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
+#include "config.h"
 #include "helpers.h"
 #include "httpd.h"
 #include "util.h"
 
-#include "config.h"
+
 
 static bool interrupted;
-
+int test;
+//struct i_data i_dat[32];
 // static void sigint_handler(int signum)
 // {
 // 	printf("interrupted\n");
@@ -40,15 +42,16 @@ static void bump_memlock_rlimit(void)
 	}
 }
 
+void testf(){
+    test = 2;
+}
+
 int main(int argc, char *argv[])
 {	
-	// struct bpf_map_info map_expect = { 0 };
-    // struct bpf_map_info info = { 0 };
-	
 
 	/* parse cli arguments */
     argp_parse(&argp, argc, argv, 0, 0, &cfg);
-    //DIE(cfg.ifindex == -1, "Missing target network device name"); //CHANGE THIS
+    DIE(cfg.unload && cfg.ifindex == -1, "Missing target network device name");
     DIE(!cfg.unload && !strlen(cfg.obj_path), "Missing XDP object path");
     DIE(!cfg.unload && !strlen(cfg.section), "Missing section name");
 
@@ -62,15 +65,34 @@ int main(int argc, char *argv[])
 
     int nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	
+	sprintf(route_path, "/firewall/%s/%s/interface", cfg.os_name, cfg.version);
+
+
+    for (int ifindex = 0; ifindex < 32; ifindex++){
+        i_dat[ifindex] = (i_data){
+            .ifname      = { [0 ... IF_NAMESIZE-1] = 0 },
+            .ifindex     = ifindex,  /* bad */
+            .map_fd      = -1,
+            .ans         = 0,
+            .prog_fd     = -1,
+            .map_index   = 0,
+            .bpf_obj     = NULL,
+            .map_expect = { 0 },
+            .info = { 0 },
+        };
+
+    }
 	
-	
+    test = 1;
+    testf();
+
 	printf("Started running.\n");
 
 
 	// signal(SIGINT, sigint_handler);
 	// signal(SIGPIPE, sigint_handler);
 
-	serve_forever("12914");
+	serve_forever("12913");
 	
 	return 0;
 }
@@ -85,55 +107,46 @@ void route()
         printf("Hello! You are using %s", request_header("User-Agent"));
     }
 
-	ROUTE_GET("/firewall/ubuntu/v1/interface")
+	ROUTE_GET(route_path) // /firewall/ubuntu/v1/interface GET INFO ABOUT INTERFACES
     {
         printf("HTTP/1.1 200 OK\r\n\r\n");
         printf("Hello! You are using %s", request_header("User-Agent"));
 		print_interfaces_info();
     }
 
-    ROUTE_POST("/firewall/ubuntu/v1/interface")
+    ROUTE_POST(route_path) // /firewall/ubuntu/v1/interface?i=ens33 -- COMMAND LOAD/UNLOAD
     {
         printf("HTTP/1.1 200 OK\r\n\r\n");
         printf("Wow, seems that you POSTed %d bytes. \r\n", payload_size);
-        printf("Fetch the data using `payload` variable.");
-		
+		printf("uri: %s \r\n", uri);
+        printf("interface: %s \r\n", qs+2);
+        printf("Payload size: %d \r\n", payload_size);
+        printf("Payload: %s \r\n", payload);
+        printf("%s \r\n", command_interpreter(qs+2, payload));
     }
 
-	ROUTE_POST("/firewall/ubuntu/v1/interface/ens33/load")
+	ROUTE_PUT(route_path) // /firewall/ubuntu/v1/interface?i=ens33 -- add rule
     {
         printf("HTTP/1.1 200 OK\r\n\r\n");
-        printf("Loaded interface filter. \r\n", payload_size);
-		load_interface("ens33");
+        printf("Wow, seems that you POSTed %d bytes. \r\n", payload_size);
+		printf("uri: %s \r\n", uri);
+        printf("interface: %s \r\n", qs+2);
+        printf("Payload size: %d \r\n", payload_size);
+        printf("Payload: %s \r\n", payload);
+        add_to_interface(qs+2, payload);
+     
 	}
 
-	ROUTE_POST("/firewall/ubuntu/v1/interface/ens33/unload")
+	ROUTE_DELETE(route_path) //delete (pop) rule
     {
         printf("HTTP/1.1 200 OK\r\n\r\n");
-        printf("Unloaded interface filter. :%s\r\n", unload_interface("ens33"));
-        
+        printf("Wow, seems that you POSTed %d bytes. \r\n", payload_size);
+		printf("uri: %s \r\n", uri);
+        printf("interface: %s \r\n", qs+2);
+        printf("Payload size: %d \r\n", payload_size);
+        printf("Payload: %s \r\n", payload);
+        delete_from_interface(qs+2);  
 	}
 
-    ROUTE_POST("/firewall/ubuntu/v1/interface/ens33/a")//p=92.168.109.131&port=40
-    {
-        char *interf = "ens33";
-        char *ip = "192.168.109.131";
-        int port = 40;
-
-        printf("HTTP/1.1 200 OK\r\n\r\n");
-        printf("Adding %s:%d to interface %s.\r\n", ip, port, interf);
-		add_to_interface(interf, ip, port);
-	}
-
-    ROUTE_POST("/firewall/ubuntu/v1/interface/ens33/d")//ip=92.168.109.131&port=40
-    {
-        char *interf = "ens33";
-        char *ip = "192.168.109.131";
-        int port = 40;
-        printf("HTTP/1.1 200 OK\r\n\r\n");
-        printf("Adding %s:%d to interface %s.\r\n", ip, port, interf);
-		delete_from_interface(interf, ip, port);
-	}
-    
     ROUTE_END()
 }

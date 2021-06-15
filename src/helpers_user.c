@@ -1,7 +1,7 @@
 #include <string.h>     /* strerror */
 
-#include "helpers.h"
 #include "config.h"
+#include "helpers.h"
 #include "util.h"
 
 /* load_bpf_object_file - extracts eBPF bytecode and uploads it in kernel
@@ -138,7 +138,7 @@ int find_map_fd(struct i_data *i_dat, const char *mapname)
 {
 	struct bpf_map *map;
 	int map_fd = -1;
-
+    
 	/* bpf_object to bpf_map */
 	map = bpf_object__find_map_by_name(i_dat->bpf_obj, mapname);
         if (!map) {
@@ -146,8 +146,9 @@ int find_map_fd(struct i_data *i_dat, const char *mapname)
 		return 0;
 	}
 
-	i_dat->map_fd = bpf_map__fd(map);
-
+	
+    i_dat->map_fd = bpf_map__fd(map);
+    printf("Map fd: %d\n", i_dat->map_fd);
     return 0;
 }
 
@@ -217,127 +218,171 @@ uint32_t ip_to_uint(char *ip_str)
     return ip_int;
 }
 
+char *uint_to_ip(uint32_t ip_int)
+{   
+    struct in_addr addr = {ip_int};
+    return inet_ntoa( addr );
+}
+
 
 //INTERACTION WITH kernel maps
 
-int add_entry_to_map(int map_fd, char *ipsrc, int port)
+
+void print_rule(struct rule *rule){
+    printf("Ip address: %s\n", uint_to_ip(rule->ip));
+    printf("Address mask: %s\n", uint_to_ip(rule->mask));
+    if (rule->ipv4_hdr){
+        printf("IPv4: \n");
+        printf("Protocol: %u\n", rule->ipv4_hdr->protocol);
+        // printf("Ip address: %u\n",rule->ip);
+        // printf("Address mask: %u\n",rule->ip);
+    }
+    if (rule->tcph){
+        printf("TCP: \n");
+        printf("Source port: %u\n", htons(rule->tcph->source));
+        printf("Destination port: %u\n", htons(rule->tcph->dest));
+        // printf("Ip address: %u\n",rule->ip);
+        // printf("Address mask: %u\n",rule->ip);
+    }
+}
+
+
+
+int add_rule_to_map(int map_fd, int32_t index, struct rule *rule)
 {
-	struct ipv4_entry *value = NULL;
-	__u32 key = 0;
-
-	key = ip_to_uint(ipsrc);
-
-	printf("Fd data: %d, %s, %d.\n", map_fd, ipsrc, port);
-
-	bpf_map_lookup_elem(map_fd, &key, value);
-	printf("Lookup ok.\n");
-	if(!value){
-		printf("First entry for this ip.\n");
-		value = (struct ipv4_entry *)malloc(sizeof(struct ipv4_entry));
-		memset(value->ports, 0, 65536);
-		value->ports[port] = 1;
-        value->ports_nr = 1;
-		value->count = 0;
-	}
-    else
+	if (bpf_map_update_elem(map_fd, &index, rule, BPF_ANY))
     {
-        if (value->ports[port] == 1){
-            printf("Port already exists in list.\n");
-            goto done;
-        }
-        else
-        {
-            if (value->ports_nr < 65536)
-            {
-                value->ports[port] = 1;
-                value->ports_nr += 1;
-            }
-            else
-            {   //Should never happen
-                printf("Port list is full.\n");
-                printf("WARNING: This should never happen.\n");
-                goto done;
-            }
-            
-        }
-	}
-
-	if (bpf_map_update_elem(map_fd, &key, value, BPF_ANY))
-		error(1, errno, "can't add ip to map %s\n", ipsrc);
-
-	printf("ip added %s with port %d\n", ipsrc, port);
-
-done:
-
-    free(value);
-
+        error(1, errno, "can't add rule %d to map\n", index);
+    }
+	printf("Rule nr %d added to %d map_fd.\n ", index, map_fd);
 	return 0;
 }
 
-int delete_entry_from_map(int map_fd, char *ipsrc, int port)
+int handle_IP(struct json_object *jobj, struct rule *rule)
 {
-	struct ipv4_entry *value = NULL;
-	__u32 key = 0;
+    rule->ipv4_hdr = malloc(sizeof(struct iphdr));
+    json_object_object_foreach(jobj, key, val) 
+    {
+        printf("key: \"%s\", val: \"%s\"\n", key, json_object_get_string(val));
 
-	key = ip_to_uint(ipsrc);
-
-	printf("Fd data: %d, %s, %d.\n", map_fd, ipsrc, port);
-
-	bpf_map_lookup_elem(map_fd, &key, value);
-	printf("Lookup ok.\n");
-	if(!value){
-		printf("No entry for this ip");
-	} else {
-		if (value->ports[port] == 1)
+        if (strcmp(key, "protocol") == 0) // is cmd
         {
-            value->ports[port] = 0;
-            value->ports_nr--;
-            if(value->ports_nr == 0)
-            {
-                if (bpf_map_delete_elem(map_fd, &key))
-                error(1, errno, "can't delete ip from map %s\n", ipsrc);
-                printf("ip added %s with port %d\n", ipsrc, port);
-            }
-            else
-            {
-                if (bpf_map_update_elem(map_fd, &key, value, BPF_ANY))
-                error(1, errno, "can't update (delete) map %s\n", ipsrc);
-                printf("ip added %s with port %d\n", ipsrc, port);
-            }
+            printf("key: \"%s\", val: %d\n", key, json_object_get_int(val));
+            rule->ipv4_hdr->protocol = (uint8_t)json_object_get_int(val);
+            printf("Saved protocol %u\n", rule->ipv4_hdr->protocol);
         }
-        else
+        // else if (strcmp(key, "mask") == 0) /* unload: */
+        // {
+        //     rule.mask = ip_to_uint(json_object_get_string(val));
+        // }
+        // else if (strcmp(key, "ip_header") == 0) /* unload: */
+        // {
+        //     handle_IP(val, &rule);
+        // }
+        // else if (strcmp(key, "tcp_header") == 0) /* unload: */
+        // {
+        //     handle_TCP(val, &rule);
+        // }
+        // else if (strcmp(key, "udp_header") == 0) /* unload: */
+        // {
+        //     handle_UDP(val, &rule);
+        // }
+        else /* default: */
         {
-            printf("port was not in list");
+            RET(0, 1, "Attribute not recognised");
         }
-	}
-
-    free(value);
-
-	return 0;
+    }
 }
 
-//useless
-// void load_xdp_obj_map(struct i_data *i_dat, struct config *cfg)
-// {
+int handle_TCP(struct json_object *jobj, struct rule *rule)
+{
+    rule->tcph = malloc(sizeof(struct tcphdr));
+    json_object_object_foreach(jobj, key, val) 
+    {
+        if (strcmp(key, "source") == 0) // is cmd
+        {
+            printf("key: \"%s\", val: %d\n", key, json_object_get_int(val));
+            rule->tcph->source = (uint16_t)ntohs(json_object_get_int(val));
+            printf("New net val %u\n", rule->tcph->source);
+        }
+        else if (strcmp(key, "dest") == 0) /* unload: */
+        {
+            printf("key: \"%s\", val: %d\n", key, json_object_get_int(val));
+            // json_object_get
+            rule->tcph->dest = (uint16_t)ntohs((uint16_t)json_object_get_int(val));
+            printf("New net val %u\n", rule->tcph->dest);
+        }
+        // else if (strcmp(key, "ip_header") == 0) /* unload: */
+        // {
+        //     handle_IP(val, &rule);
+        // }
+        // else if (strcmp(key, "tcp_header") == 0) /* unload: */
+        // {
+        //     handle_TCP(val, &rule);
+        // }
+        // else if (strcmp(key, "udp_header") == 0) /* unload: */
+        // {
+        //     handle_UDP(val, &rule);
+        // }
+        else /* default: */
+        {
+            RET(0, 1, "Attribute not recognised");
+        }
+    }
+}
 
-//     struct bpf_map *map;
+int handle_UDP(struct json_object *jobj, struct rule *rule)
+{
+    // __be16	source;
+	// __be16	dest;
+}
 
-//     map = bpf_object__find_map_by_name(i_dat->bpf_obj, "black_list");
-// 	if (!map)
-// 		error(1, errno, "can't load black_list");
-// 	printf("Blacklist Map loaded!\n");
-	
-// 	i_dat->map_fd = bpf_map__fd(map);
-// 	if (i_dat->map_fd < 0)
-// 		error(1, errno, "can't get black_list map fd");
-// 	printf("Got map fd!\n");
+int create_and_add_rule(int map_fd, int32_t index, char *data)
+{
+    struct json_object *jobj;
+    struct rule rule;
 
-// 	// if (bpf_set_link_xdp_fd(cfg->ifindex, cfg->prog_fd, 0) < 0)
-// 	// 	error(1, errno, "can't attach xdp program to interface %s:%d: "
-// 	// 		"%d:%s\n", if_indextoname(cfg->ifindex, cfg->ifname), cfg->ifindex, errno, strerror(errno));
-// 	// printf("Attached to interface %s\n", if_indextoname(cfg->ifindex, cfg->ifname));
-	
-// }
+    jobj = json_tokener_parse(data);
+    json_object_object_foreach(jobj, key, val) 
+    {
+        //printf("key: \"%s\", val: \"%s\"\n", key, json_object_get_string(val));
+
+        if (strcmp(key, "ip") == 0) /* ip address */
+        {
+            rule.ip = ip_to_uint((char *)json_object_get_string(val));
+            printf("key: \"%s\", val: \"%s\"\n", key, json_object_get_string(val));
+        }
+        else if (strcmp(key, "mask") == 0) /* mask: */
+        {
+            rule.mask = ip_to_uint((char *)json_object_get_string(val));
+            printf("key: \"%s\", val: \"%s\"\n", key, json_object_get_string(val));
+        }
+        else if (strcmp(key, "ip_header") == 0) /* unload: */
+        {
+            printf("key: \"%s\"\n", key, json_object_get_string(val));
+            handle_IP(val, &rule);
+        }
+        else if (strcmp(key, "tcp_header") == 0) /* unload: */
+        {
+            handle_TCP(val, &rule);
+        }
+        else if (strcmp(key, "udp_header") == 0) /* unload: */
+        {
+            handle_UDP(val, &rule);
+        }
+        else /* default: */
+        {
+            RET(0, 1, "Attribute not recognised");
+        }
+    }
+    print_rule(&rule);
+    add_rule_to_map(map_fd, index, &rule);
+}
+
+int pop_rule(int map_fd, int32_t index)
+{
+
+}
 
 int load_interface(char *interface)
 {
@@ -345,32 +390,16 @@ int load_interface(char *interface)
     int ifindex = if_nametoindex(interface);
 	if (ifindex < 0)
 		error(1, errno, "unknown interface %s\n", interface);
-    printf("WTF INTERF %d\n", ifindex);
-    i_dat[ifindex] = (i_data){
-        .ifname      = { [0 ... IF_NAMESIZE-1] = 0 },
-        .ifindex     = ifindex,  /* bad */
-        .map_fd      = -1,
-        .ans         = 0,
-        .prog_fd     = -1,
-        .bpf_obj     = NULL,
-        .map_expect = { 0 },
-        .info = { 0 },
-    };
-
-    strncpy(cfg.ifname, interface, IF_NAMESIZE);
 
     load_bpf_and_xdp_attach(&i_dat[ifindex], &cfg);
     DIE(!i_dat[ifindex].bpf_obj, "Failed to load XDP program");
-	
-	//i_dat[ifindex].map_fd = find_map_fd(&i_dat[ifindex].bpf_obj, "black_list");
-    find_map_fd(&i_dat[ifindex], "black_list");
-    
-    //for debugging purposes===========//
-    char *ipsrc = "192.168.109.131";
-	int chk = add_entry_to_map(i_dat[ifindex].map_fd, ipsrc, 80);
-	printf("Inserted to %d, if:%d\n", i_dat[ifindex].map_fd, ifindex);
+
+    find_map_fd(&i_dat[ifindex], "rule_list");
+
+    printf("INTERF %d and mapFD :%d and progFD: %d\n", ifindex, i_dat[ifindex].map_fd, i_dat[ifindex].prog_fd);
+
     return 0;
-    //==================================//
+    
 }
 
 int unload_interface(char *interface)
@@ -382,30 +411,67 @@ int unload_interface(char *interface)
     return xdp_link_detach(ifindex, cfg.xdp_flags);
 }
 
-int add_to_interface(char *interface, char *ipsrc, int port)
+int add_to_interface(char *interface, char *data)
 {
+    
     int ifindex = if_nametoindex(interface);
 	if (!ifindex)
 		error(1, errno, "unknown interface %s\n", interface);
-
-    find_map_fd(&i_dat[ifindex], "black_list");
-    printf("WTF INTERF %d and mapFD :%d\n", ifindex, i_dat[ifindex].map_fd);
     
-    int chk = add_entry_to_map(i_dat[ifindex].map_fd, ipsrc, port);
-	printf("Inserted to %d\n", i_dat[ifindex].map_fd);
+    printf("INTERF %d and mapFD :%d\n", ifindex, i_dat[ifindex].map_fd);
+    
+    int chk = create_and_add_rule(i_dat[ifindex].map_fd, i_dat[ifindex].map_index, data);
     return 0;
 }
 
-int delete_from_interface(char *interface, char *ipsrc, int port)
+int delete_from_interface(char *interface)
 {
     int ifindex = if_nametoindex(interface);
 	if (!ifindex)
 		error(1, errno, "unknown interface %s\n", interface);
     printf("WTF INTERF %d\n", ifindex);
 
-    find_map_fd(&i_dat[ifindex], "black_list");
+    find_map_fd(&i_dat[ifindex], "rule_list");
 
-    int chk = add_entry_to_map(i_dat[ifindex].map_fd, ipsrc, port);
+    int chk = pop_rule(i_dat[ifindex].map_fd, i_dat[ifindex].map_index);
 	printf("Deleted from %d\n", i_dat[ifindex].map_fd);
     return 0;
+}
+
+char *command_interpreter(char *interf, char *payload)
+{
+    struct json_object *jobj;
+    jobj = json_tokener_parse(payload);
+
+    json_object_object_foreach(jobj, key, val) 
+    {
+        printf("key: %s, val: \"%s\"\n", key, json_object_get_string(val));
+
+        if (strcmp(key, "cmd") == 0) // is cmd
+        {
+
+            if (strcmp(json_object_get_string(val), "load") == 0) /* load: */
+            {
+                load_interface(interf);
+            } 
+            else if (strcmp(json_object_get_string(val), "unload") == 0) /* unload: */
+            {
+                unload_interface(interf);
+            }
+            else /* default: */
+            {
+                return "ERR: Command not recognised.";
+            }
+        }
+        else /* default: */
+        {
+            return "ERR: Expected a command.";
+        }
+    }
+    // printf("mapFD :%d\n", i_dat[2].map_fd);
+    return "SUCCESS.";
+}
+
+int command_parser(){
+
 }

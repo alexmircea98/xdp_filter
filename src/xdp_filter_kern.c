@@ -18,12 +18,21 @@
 
 //make it percpu
 #define MAX_NR_PORTS 65536
+#define MAX_NR_OF_RULES 100
+#define TEST_NR 1
 
 struct bpf_map_def SEC("maps") black_list = {
 	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u32), //ip value
 	.value_size = sizeof(struct ipv4_entry), // hashmap of ports
-	.max_entries = 128,
+	.max_entries = MAX_NR_OF_RULES,
+};
+
+struct bpf_map_def SEC("maps") rule_list = {
+	.type = BPF_MAP_TYPE_PERCPU_ARRAY,
+	.key_size = sizeof(__u32), //ip value
+	.value_size = sizeof(struct rule), // hashmap of ports
+	.max_entries = MAX_NR_OF_RULES,
 };
 
 // static inline int get_tcp_dest_port(void *data, __u64 nh_off, void *data_end) {
@@ -86,6 +95,7 @@ int xdp_drop(struct xdp_md *ctx)
 	struct ethhdr *eth = data;    // needed to pass the bpf verifier
     __u64 nh_off = 0;
     __u16 dest_port;
+	int i;
 
 	nh_off = sizeof(*eth);
 
@@ -102,7 +112,7 @@ int xdp_drop(struct xdp_md *ctx)
 
 	//bpf_printk("Protocol value %u\n", ipv4_hdr->protocol);
 	
-	//Split, add support for udp
+	
 	__u16 portv = 0;
 	if (ipv4_hdr->protocol == IPPROTO_UDP) {
 		bpf_printk("UDP packet\n");
@@ -132,6 +142,20 @@ int xdp_drop(struct xdp_md *ctx)
 	if (portv > 65335){
 		return XDP_PASS;
 	}
+
+	struct rule *test;
+	int idx;
+
+	#pragma clang loop unroll(full)
+	for (idx = 0; idx < 10; idx++)
+	{
+		test = bpf_map_lookup_elem(&rule_list, &idx);
+		
+		if (test){
+			break;
+		}
+	}
+
 	struct ipv4_entry *entry;
 
 	entry = bpf_map_lookup_elem(&black_list, &(ipv4_hdr->saddr));

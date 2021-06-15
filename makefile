@@ -15,6 +15,8 @@ CFLAGS     = -I $(INC) -I $(LIBBPF)/include -I $(LIBBPF)/build/usr/include
 LDFLAGS    = -L $(LIBBPF)/build -l:libbpf.a -lelf -lz
 BPF_CFLAGS = $(CFLAGS) -D__KERNEL__ -D__BPF_TRACING__ -emit-llvm -O2
 LLC_FLAGS  = -march=bpf -filetype=obj
+CFLAGS += $(shell pkg-config --cflags json-c)
+LDFLAGS += $(shell pkg-config --libs json-c)
 
 # identify sources and create object file targets
 SOURCES_XDP = $(wildcard $(SRC)/*_kern.c)

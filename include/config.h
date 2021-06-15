@@ -19,6 +19,8 @@ struct config
     char     obj_path[256];
     char     section[256];
     char     pin_dir[256];
+    char     os_name[16];
+    char     version[8];
 };
 
 typedef struct i_data
@@ -27,6 +29,7 @@ typedef struct i_data
     int          ans;
     int32_t  ifindex;
     int32_t  prog_fd;
+    int32_t  map_index;
     char     ifname[IF_NAMESIZE];
     struct bpf_object   *bpf_obj;
     struct bpf_map_info map_expect;
@@ -34,6 +37,7 @@ typedef struct i_data
     
 } i_data;
 
+extern char route_path[64];
 extern struct argp   argp;
 extern struct config cfg;
 extern struct i_data i_dat[32];

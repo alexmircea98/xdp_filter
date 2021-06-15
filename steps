@@ -49,5 +49,7 @@ usage:
     url -X POST http://localhost:12914/firewall/ubuntu/v1/interface/ens33/a
     url -X POST http://localhost:12914/firewall/ubuntu/v1/interface/ens33/d
 
+    sudo ip link sh
+
 https://github.com/pabeni/xdp_walkthrough_examples
 https://www.browserling.com/tools/dec-to-ip
