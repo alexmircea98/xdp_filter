@@ -12,6 +12,10 @@
 #include <stddef.h>
 #include <linux/ipv6.h>
 
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdatomic.h>
+
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 #include "xdp_filter_common.h"
@@ -144,15 +148,17 @@ int xdp_drop(struct xdp_md *ctx)
 	}
 
 	struct rule *test;
-	int idx;
+	//int idx;
 
-	#pragma clang loop unroll(full)
-	for (idx = 0; idx < 10; idx++)
-	{
-		test = bpf_map_lookup_elem(&rule_list, &idx);
+	//#pragma clang loop unroll(full)
+	for (uint8_t idx = 0; idx < 10; idx++)
+	{	
+		uint32_t key = idx;
+		test = bpf_map_lookup_elem(&rule_list, &key);
 		
 		if (test){
-			break;
+			//bpf_printk("Got Here, NULL\n");
+			return XDP_PASS;
 		}
 	}
 

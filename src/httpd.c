@@ -47,9 +47,8 @@ void serve_forever(const char *PORT)
             );
 
     // Setting all elements to -1: signifies there is no client connected
-    int i;
-    for (i=0; i<CONNMAX; i++)
-        clients[i]=-1;
+    int i = -1;
+    
     startServer(PORT);
     
     // Ignore SIGCHLD to avoid zombie threads
@@ -59,18 +58,18 @@ void serve_forever(const char *PORT)
     while (1)
     {
         addrlen = sizeof(clientaddr);
-        clients[slot] = accept (listenfd, (struct sockaddr *) &clientaddr, &addrlen);
+        i = accept (listenfd, (struct sockaddr *) &clientaddr, &addrlen);
 
-        if (clients[slot]<0)
+        if (i<0)
         {
             perror("accept() error");
         }
         else
         {
-                respond(slot);
+                respond(i);
         }
 
-        while (clients[slot]!=-1) slot = (slot+1)%CONNMAX;
+        i=-1;
     }
 }
 
@@ -133,7 +132,7 @@ void respond(int n)
     char *ptr;
 
     buf = malloc(65535);
-    rcvd=recv(clients[n], buf, 65535, 0);
+    rcvd=recv(n, buf, 65535, 0);
     if (rcvd<0)    // receive error
         fprintf(stderr,("recv() error\n"));
     else if (rcvd==0)    // receive socket closed
@@ -175,7 +174,7 @@ void respond(int n)
         payload_size = t2 ? atol(t2) : (rcvd-(t-buf));
 
         // bind clientfd to stdout, making it easier to write
-        clientfd = clients[n];
+        clientfd = n;
         dup2(clientfd, STDOUT_FILENO);
         close(clientfd);
 
@@ -183,14 +182,14 @@ void respond(int n)
         route();
 
         // tidy up
-        fflush(stdout); //works for now FIX LATER!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        //shutdown(STDOUT_FILENO, SHUT_WR);
+        fflush(stdout);
+        shutdown(STDOUT_FILENO, SHUT_RDWR);
         //close(STDOUT_FILENO);
     }
     // Closing SOCKET
-    // shutdown(clientfd, SHUT_RDWR);         //All further send and recieve operations are DISABLED...
-    // close(clientfd);
-    // clients[n]=-1;
+    //shutdown(clientfd, SHUT_RDWR); 
+    //close(clientfd);
+    //clients[n]=-1;
 }
 
 
