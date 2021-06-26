@@ -184,7 +184,7 @@ int find_cnt_map_fd(struct i_data *i_dat, const char *mapname)
 
 	
     i_dat->map_count_fd = bpf_map__fd(map);
-    printf("Map fd_cnt: %d\n", i_dat->map_fd_cnt);
+    printf("Map map_count_fd: %d\n", i_dat->map_count_fd);
 
     if (bpf_map_update_elem(i_dat->map_count_fd, &key, &val, BPF_ANY))
     {

@@ -15,6 +15,8 @@ curl -X PUT -H "Content-Type: text/plain" \
     --data '{ "ip":"192.168.109.11", "mask":"255.255.255.255" }' \
 http://localhost:12913/firewall/ubuntu/v1/interface?i=ens33;
 
+curl -X  GET http://localhost:12913/firewall/ubuntu/v1/interface?i=ens33
+
 for number in {1..149}
 do
 curl -X PUT -H "Content-Type: text/plain" \

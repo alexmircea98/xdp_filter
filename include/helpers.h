@@ -53,6 +53,7 @@ int add_to_interface(char *interface, char *data);
 int delete_from_interface(char *interface);
 
 char *command_interpreter(char *interf, char *payload);
+int get_interface_data(char *interface);
 
 #endif
 
