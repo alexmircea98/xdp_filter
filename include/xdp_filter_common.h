@@ -1,23 +1,13 @@
-
-struct ipv4_entry {
-	//char ip_str[16]; //ipv4 in string format
-	char ports[65536];
-	__u16 ports_nr;
-	__u64 count;
-};
-
-// ingress/egress set bu flags
-
-//for (size_t i=0; i<20; ++i)
-//	if (iph[i] & mask[i] != match[i]) return false;
+#define MAX_NR_OF_RULES 150 // max 255
 
 struct rule {
 	__u32 ip;
 	__u32 mask;
-
-	struct iphdr *ipv4_hdr;
-	struct tcphdr *tcph;
-	struct udphdr *udp;
+	struct iphdr ipv4_hdr;
+	unsigned char iph;
+	unsigned char tcph;
+	unsigned char udph;
+	
 	//-------ipv4-------//
 	// __u8	tos;
 	// __be16	tot_len;
@@ -28,6 +18,14 @@ struct rule {
 	// __sum16	check;
 	// __be32	saddr;
 	// __be32	daddr;
+	
+
+};
+
+struct rule_cnt {
+	struct tcphdr tcph;
+	struct udphdr udp;
+	__u32 cnt;
 	//-------TCP-------//
 	// __be16	source;
 	// __be16	dest;
@@ -41,5 +39,4 @@ struct rule {
 	// __be16	dest;
 	// __be16	len;
 	// __sum16	check;
-
 };

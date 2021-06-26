@@ -42,9 +42,6 @@ static void bump_memlock_rlimit(void)
 	}
 }
 
-void testf(){
-    test = 2;
-}
 
 int main(int argc, char *argv[])
 {	
@@ -61,36 +58,13 @@ int main(int argc, char *argv[])
 
 	bump_memlock_rlimit();
 
-	print_interfaces_info();
+	//print_interfaces_info();
 
     int nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	
 	sprintf(route_path, "/firewall/%s/%s/interface", cfg.os_name, cfg.version);
 
-
-    for (int ifindex = 0; ifindex < 32; ifindex++){
-        i_dat[ifindex] = (i_data){
-            .ifname      = { [0 ... IF_NAMESIZE-1] = 0 },
-            .ifindex     = ifindex,  /* bad */
-            .map_fd      = -1,
-            .ans         = 0,
-            .prog_fd     = -1,
-            .map_index   = 0,
-            .bpf_obj     = NULL,
-            .map_expect = { 0 },
-            .info = { 0 },
-        };
-
-    }
-	
-    test = 1;
-    testf();
-
 	printf("Started running.\n");
-
-
-	// signal(SIGINT, sigint_handler);
-	// signal(SIGPIPE, sigint_handler);
 
 	serve_forever("12913");
 	
@@ -110,8 +84,14 @@ void route()
 	ROUTE_GET(route_path) // /firewall/ubuntu/v1/interface GET INFO ABOUT INTERFACES
     {
         printf("HTTP/1.1 200 OK\r\n\r\n");
-        printf("Hello! You are using %s", request_header("User-Agent"));
-		print_interfaces_info();
+        
+        if(qs){
+            printf("Req interface: %s \r\n", qs+2);
+            get_interface_data(qs+2);
+        } else {
+            print_interfaces_info();
+        }
+		
     }
 
     ROUTE_POST(route_path) // /firewall/ubuntu/v1/interface?i=ens33 -- COMMAND LOAD/UNLOAD

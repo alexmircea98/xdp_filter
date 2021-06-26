@@ -1,6 +1,7 @@
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <linux/if_link.h>
+#include <linux/types.h>
 
 //interfaces
 #include <sys/types.h>

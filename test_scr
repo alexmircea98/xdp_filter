@@ -1,0 +1,9 @@
+#!/bin/bash
+
+
+for number in {1..10}
+do
+curl -X PUT -H "Content-Type: text/plain" \
+    --data '{ "ip":"192.168.109.131", "mask":"255.255.255.255", "ip_header":{ "protocol":1, "saddr":"1234", "daddr":"1234"}, "tcp_header":{ "source":80, "dest":80 }  }' \
+http://localhost:12913/firewall/ubuntu/v1/interface?i=ens33
+done

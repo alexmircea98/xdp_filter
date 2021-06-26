@@ -15,37 +15,32 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdatomic.h>
+#include <stddef.h>
 
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 #include "xdp_filter_common.h"
 
-//make it percpu
-#define MAX_NR_PORTS 65536
-#define MAX_NR_OF_RULES 100
-#define TEST_NR 1
-
-struct bpf_map_def SEC("maps") black_list = {
-	.type = BPF_MAP_TYPE_HASH,
-	.key_size = sizeof(__u32), //ip value
-	.value_size = sizeof(struct ipv4_entry), // hashmap of ports
-	.max_entries = MAX_NR_OF_RULES,
-};
-
 struct bpf_map_def SEC("maps") rule_list = {
-	.type = BPF_MAP_TYPE_PERCPU_ARRAY,
-	.key_size = sizeof(__u32), //ip value
-	.value_size = sizeof(struct rule), // hashmap of ports
+	.type = BPF_MAP_TYPE_ARRAY,
+	.key_size = sizeof(__u32), //index
+	.value_size = sizeof(struct rule), //
 	.max_entries = MAX_NR_OF_RULES,
 };
 
-// static inline int get_tcp_dest_port(void *data, __u64 nh_off, void *data_end) {
-//     struct tcphdr *tcph = data + nh_off;
+struct bpf_map_def SEC("maps") rule_list_cnt = {
+	.type = BPF_MAP_TYPE_ARRAY,
+	.key_size = sizeof(__u32), //index
+	.value_size = sizeof(struct rule_cnt), //
+	.max_entries = MAX_NR_OF_RULES,
+};
 
-//     if (data + nh_off + sizeof(struct tcphdr) > data_end)
-//         return 0;
-//     return tcph->dest;
-// }
+struct bpf_map_def SEC("maps") drop_count = {
+	.type = BPF_MAP_TYPE_ARRAY,
+	.key_size = sizeof(__u32), //index
+	.value_size = sizeof(__u64), //
+	.max_entries = 1,
+};
 
 /* Parse IPV4 packet to get SRC, DST IP and protocol */
 static inline int parse_ipv4(void *data, __u64 *nh_off, void *data_end,
@@ -53,7 +48,7 @@ static inline int parse_ipv4(void *data, __u64 *nh_off, void *data_end,
 {
 	struct iphdr *iph = data + *nh_off;
 
-	if (iph + 1 > data_end)
+	if ((void *)(iph + 1) > data_end)
 		return 0;
 
 	*nh_off += iph->ihl << 2;
@@ -69,7 +64,7 @@ static inline int parse_udp(void *data, __u64 th_off, void *data_end,
 {
 	struct udphdr *uh = data + th_off;
 
-	if (uh + 1 > data_end)
+	if ((void *)(uh + 1) > data_end)
 		return 0;
 
 	/* keep life easy and require 0-checksum */
@@ -95,12 +90,20 @@ int xdp_drop(struct xdp_md *ctx)
 	void *data_end = (void *)(unsigned long)ctx->data_end;
     void *data = (void *)(unsigned long)ctx->data;    // include/uapi/linux/if_ether.h
     
-	
+	bpf_printk("/-----------------------------------------------------/\n");
 	struct ethhdr *eth = data;    // needed to pass the bpf verifier
-    __u64 nh_off = 0;
-    __u16 dest_port;
-	int i;
-
+    __u64 nh_off = 0;            // offset where the eth header ends also neded for verifier and to know where next header 
+    __u64 *drop;
+	__u32 cnt_key = 0;
+	__u16 dest_port;
+	
+	struct iphdr *ipv4_hdr;
+	struct tcphdr *tcph;
+	struct udphdr *udp;
+	
+	struct rule *rule;
+	struct rule_cnt *rule_cnt;
+	__u32 xrr = 0;
 	nh_off = sizeof(*eth);
 
     if ((void*)(eth + 1) > data_end)
@@ -109,77 +112,115 @@ int xdp_drop(struct xdp_md *ctx)
 		return XDP_PASS;    // include/uapi/linux/ip.h
 	}
        
-	struct iphdr *ipv4_hdr = data + sizeof(struct ethhdr);    // needed to pass the bpf verifier
+	ipv4_hdr = data + sizeof(struct ethhdr);    // needed to pass the bpf verifier
     
 	if ((void *)(ipv4_hdr + 1) > data_end)
         return XDP_PASS;    // check if the saddr matches
 
 	//bpf_printk("Protocol value %u\n", ipv4_hdr->protocol);
 	
-	
-	__u16 portv = 0;
+
+	int protocol = -1; // to make sure, default 0 for TCP, 1 for UDP
+	// __u16 portv = 0;
+
 	if (ipv4_hdr->protocol == IPPROTO_UDP) {
 		bpf_printk("UDP packet\n");
-        struct udphdr *udp = (void*)ipv4_hdr + sizeof(*ipv4_hdr);
-        if ((void*)udp + sizeof(*udp) <= data_end) {
-			portv = bpf_htons(udp->dest);
+        udp = (void*)ipv4_hdr + sizeof(*ipv4_hdr);
+        if ((void*)udp + sizeof(*udp) >= data_end) {
+			return XDP_PASS;
         }
+		protocol = 1;
+		//portv = bpf_htons(udp->dest);
     } else if(ipv4_hdr->protocol == IPPROTO_TCP) {
 		bpf_printk("TCP packet\n");
-		struct tcphdr *tcph = (data + sizeof(struct ethhdr) + (ipv4_hdr->ihl * 4));
+		tcph = (data + sizeof(struct ethhdr) + (ipv4_hdr->ihl * 4));
 
 		// Check TCP header.
 		if (tcph + 1 > (struct tcphdr *)data_end)
 		{
-			return XDP_DROP;
+			return XDP_PASS;
 		}
-			
-		portv = bpf_htons(tcph->dest);
+		protocol = 0;
+		//portv = bpf_htons(tcph->dest);
 	} else {
 		return XDP_PASS;
 	}
-	bpf_printk("Port value %u\n", portv);
 	
-	if (portv < 0){
-		return XDP_PASS;
-	}
-	if (portv > 65335){
-		return XDP_PASS;
-	}
+	//bpf_printk("Port value %u\n", portv);
 
-	struct rule *test;
-	//int idx;
-
-	//#pragma clang loop unroll(full)
-	for (uint8_t idx = 0; idx < 10; idx++)
+	
+	
+	for (uint8_t idx = 0; idx < MAX_NR_OF_RULES; idx++)
 	{	
-		uint32_t key = idx;
-		test = bpf_map_lookup_elem(&rule_list, &key);
-		
-		if (test){
-			//bpf_printk("Got Here, NULL\n");
-			return XDP_PASS;
+		bpf_printk("Index: %u\n", idx);
+		__u32 key = idx;
+		rule = bpf_map_lookup_elem(&rule_list, &key);
+		__u32 valid = rule->ip;
+		if (rule && valid){
+			bpf_printk("ip src: %u\n", ipv4_hdr->saddr);
+			bpf_printk("rule->mask: %u\n", rule->mask);
+			bpf_printk("rule->ip: %u\n", rule->ip);
+			xrr = (__u32)(ipv4_hdr->saddr&rule->mask); 
+			bpf_printk("xrr: %u\n", xrr);
+			//bpf_printk("rule->ipv4_hdr.protocol: %u\n", rule->protocol);
+			if ( xrr == rule->ip ){ // match found
+
+				bpf_printk("match here\n");
+				bpf_printk("rule->iph %u\n", rule->iph);
+				bpf_printk("rule->tcph %u\n", rule->tcph);
+				bpf_printk("rule->udph %u\n", rule->udph);
+				if ( rule->iph == 0 && rule->tcph == 0 && rule->udph == 0 ){ 
+					bpf_printk("NO HEADER\n");
+					goto drop;
+				}
+
+				if (rule->iph){
+					bpf_printk("CHECK IP HEADER\n");
+					if (rule->ipv4_hdr.protocol == ipv4_hdr->protocol) goto drop;;
+					if (rule->ipv4_hdr.check == ipv4_hdr->check) goto drop;;
+					if (rule->ipv4_hdr.ttl == ipv4_hdr->ttl) goto drop;;
+					if (rule->ipv4_hdr.daddr == ipv4_hdr->daddr) goto drop;;
+					
+				}
+
+				rule_cnt = bpf_map_lookup_elem(&rule_list_cnt, &key);
+				
+				if (!protocol){
+					if (rule->tcph && rule_cnt){
+						bpf_printk("CHECK TCP HEADER\n");
+						bpf_printk("rule->source %u\n", rule_cnt->tcph.source);
+						//bpf_printk("tcph->source %u\n", tcph->source);
+						if (rule_cnt->tcph.source == tcph->source) goto drop;;
+						bpf_printk("rule->dest %u\n", rule_cnt->tcph.dest);
+						//bpf_printk("tcph->dest %u\n", tcph->dest);
+						if (rule_cnt->tcph.dest == tcph->dest) goto drop;;
+						if (rule_cnt->tcph.check == tcph->check) goto drop;;
+					}
+				} else {
+					if (rule->udph && rule_cnt){
+						bpf_printk("CHECK UDP HEADER\n");
+						if (rule_cnt->udp.source == udp->source) return XDP_DROP;
+						if (rule_cnt->udp.dest == udp->dest) return XDP_DROP;
+						//if (rule_cnt->udp.len == udp->len) return XDP_DROP;
+						//if (rule_cnt->udp.check == udp->check) return XDP_DROP;
+						
+					}
+				}
+
+			}
+		} else {
+			break;
 		}
 	}
 
-	struct ipv4_entry *entry;
-
-	entry = bpf_map_lookup_elem(&black_list, &(ipv4_hdr->saddr));
-	
-	if (entry){
-		
-		unsigned char d = (unsigned char)(entry->ports[portv]);
-		bpf_printk("port match %d\n", d);
-		if(d == 1){//here should be diff
-			
-			entry->count++;
-			bpf_printk("Dropped val: %u, port %u, count %d\n", ipv4_hdr->saddr, portv, entry->count);
-			return XDP_DROP; //if it finds a match in the list, drop it
-		}
-		
-	}
-    bpf_printk("Passed\n");
+    bpf_printk("PASSED\n");
 	return XDP_PASS;
+drop:
+	drop = bpf_map_lookup_elem(&drop_count, &cnt_key);
+	if(drop)
+		*drop += 1;
+	bpf_printk("DROPPED\n");
+	return XDP_DROP;
 }
 unsigned int _version SEC("version") = 1;
 char _license[] SEC("license") = "GPL";

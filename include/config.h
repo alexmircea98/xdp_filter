@@ -26,6 +26,8 @@ struct config
 typedef struct i_data
 {
     int       map_fd;
+    int       map_fd_cnt;
+    int       map_count_fd;
     int          ans;
     int32_t  ifindex;
     int32_t  prog_fd;

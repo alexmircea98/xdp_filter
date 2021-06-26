@@ -151,7 +151,7 @@ void respond(int n)
         {
             *qs++ = '\0'; //split URI
         } else {
-            qs = uri - 1; //use an empty string
+            qs = NULL; //use an empty string
         }
 
         header_t *h = reqhdr;
@@ -171,8 +171,8 @@ void respond(int n)
         fprintf(stderr, "payload:\n%s\n", t);
         t2 = request_header("Content-Length"); // and the related header if there is  
         payload = t;
-        payload_size = t2 ? atol(t2) : (rcvd-(t-buf));
-
+        payload_size = t2 ? atol(t2) : 0;
+        
         // bind clientfd to stdout, making it easier to write
         clientfd = n;
         dup2(clientfd, STDOUT_FILENO);
